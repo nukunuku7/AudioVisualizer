@@ -8,20 +8,20 @@ import time
 from ctypes import Structure, windll, byref, c_long
 
 # ウィンドウサイズ
-WIDTH, HEIGHT = 800, 600
+WIDTH, HEIGHT = 800, 600 # デバイス選択をする際のウィンドウサイズ
 
 # ==== スクロールオフセット ====
-scroll_offset_input = 0
-scroll_offset_output = 0
+scroll_offset_input = 0 # 入力デバイスのスクロールオフセット
+scroll_offset_output = 0 # 出力デバイスのスクロールオフセット
 scroll_speed = 20  # スクロールの速さ
 
 # ==== デバイスインデックス ====
-selected_inputs = []
-selected_outputs = []
+selected_inputs = [] # 選択された入力デバイスのインデックス
+selected_outputs = [] # 選択された出力デバイスのインデックス
 
 # ==== タイマー制御変数 ====
-selection_complete_time = None
-SELECTION_DELAY_SEC = 3
+selection_complete_time = None # デバイス選択完了時間
+SELECTION_DELAY_SEC = 3 # 選択完了後の待機時間（秒）
 
 # ==== デバイス取得 ====
 def list_devices(kind='input'):
@@ -206,9 +206,9 @@ hwnd = pygame.display.get_wm_info()["window"]
 left, top, right, bottom, *_ = get_monitor_work_area(hwnd)
 pygame.display.quit()
 
-VISUALIZER_HEIGHT = 200
-SCREEN_WIDTH = right - left
-WINDOW_Y = bottom - VISUALIZER_HEIGHT
+VISUALIZER_HEIGHT = 200 # ビジュアライザーの高さ
+SCREEN_WIDTH = right - left # 画面の幅
+WINDOW_Y = bottom - VISUALIZER_HEIGHT # ウィンドウのY座標（画面下部に配置）
 os.environ['SDL_VIDEO_WINDOW_POS'] = f'{left},{WINDOW_Y}'
 screen = pygame.display.set_mode((SCREEN_WIDTH, VISUALIZER_HEIGHT), pygame.NOFRAME)
 pygame.display.set_caption("Visualizer")
@@ -218,9 +218,9 @@ windll.user32.SetWindowLongW(hwnd, -20, extended_style | 0x80000)
 windll.user32.SetLayeredWindowAttributes(hwnd, 0x000000, 0, 0x1)
 
 # ==== ビジュアライザー用パラメータ ====
-BLOCK_SIZE = 2048
-N_BARS = 128
-BAR_HEIGHT = 160
+BLOCK_SIZE = 2048 # FFTのブロックサイズ
+N_BARS = 128 # ビジュアライザーのバー数
+BAR_HEIGHT = 160 # ビジュアライザーのバーの高さ
 BAR_WIDTH = screen.get_width() // N_BARS
 buffer = np.zeros(BLOCK_SIZE, dtype=np.float32)
 clock = pygame.time.Clock()
@@ -260,8 +260,8 @@ def get_freq_spectrum(audio, log_bins):
     fft = np.abs(np.fft.rfft(windowed))
     freqs = np.fft.rfftfreq(len(audio), 1 / SR)
     bar_heights = np.zeros(N_BARS)
-    THRESHOLD_DB = -70
-    BASE_GAIN_DB = 35
+    THRESHOLD_DB = -70 # dB以下のパワーは無視
+    BASE_GAIN_DB = 35 # 基本ゲイン（dB）
 
     for i in range(N_BARS):
         mask = (freqs >= log_bins[i]) & (freqs < log_bins[i + 1])
@@ -300,7 +300,7 @@ while running:
         y = screen.get_height() - h
         red = int(255 * mag)
         blue = int(255 * (1 - mag))
-        color = (red, 0, blue)
+        color = (red, 0, blue) # 色のグラデーション
         pygame.draw.rect(screen, color, (x, y, BAR_WIDTH - 2, h))
 
     pygame.display.flip()
