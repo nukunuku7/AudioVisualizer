@@ -1,3 +1,11 @@
+# ==============================
+# 仮想環境有効かコマンド
+# muvenv\Scripts\activate
+# 
+# 使用するプロジェクトを変える際は、仮想環境を無効化してから行うこと
+# deactivate
+# ==============================
+
 import numpy as np
 import pygame
 import sounddevice as sd
