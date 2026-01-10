@@ -48,7 +48,7 @@ Windows環境での実行を前提としています。
 
 ```powershell
 pyinstaller --onefile --windowed --name AudioVisualizer auto_mv.py
-```
+````
 
 3. `dist` フォルダ内に `main.exe`（または指定した名前）が生成されます
 4. この EXE を ZIP に同梱して配布すれば、Python 環境がなくても動作します
@@ -122,3 +122,5 @@ uv sync --active
 * 263行目
 * 264行目
 * 303行目
+
+```
