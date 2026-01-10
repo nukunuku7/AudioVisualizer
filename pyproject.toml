@@ -1,0 +1,14 @@
+[project]
+name = "auto-mv"
+version = "0.1.0"
+requires-python = ">=3.0"
+
+dependencies = [
+    "numpy",
+    "pygame",
+    "sounddevice",
+]
+
+[tool.uv]
+# ここでは venv は指定せず、--active で同期する想定
+# デフォルトの .venv 作成を防ぐことはできませんが、実行時に --active を指定します
