@@ -1,7 +1,7 @@
 # ==============================
 # 仮想環境有効かコマンド
 # muvenv\Scripts\activate
-# 
+#
 # 使用するプロジェクトを変える際は、仮想環境を無効化してから行うこと
 # deactivate
 # ==============================
@@ -20,7 +20,6 @@ from ctypes import Structure, windll, byref, c_long
 
 def find_input_device():
     devices = sd.query_devices()
-
     priority_keywords = [
         "stereo mix",
         "ステレオ ミキサー",
@@ -46,7 +45,6 @@ def find_input_device():
 
 def find_output_device():
     devices = sd.query_devices()
-
     wired_keywords = ["speaker", "headphone", "line"]
     bt_keywords = ["bluetooth", "bt"]
 
@@ -162,7 +160,6 @@ windll.user32.SetWindowLongW(
 # ==============================
 # ビジュアライザー設定
 # ==============================
-
 BLOCK_SIZE = 2048
 N_BARS = 128
 BAR_HEIGHT = 250
@@ -177,7 +174,6 @@ VISUAL_PEAK_DECAY = 0.985
 # ==============================
 # オーディオ入力
 # ==============================
-
 def audio_callback(indata, frames, time_info, status):
     global buffer
     buffer = indata[:, 0]
@@ -195,7 +191,6 @@ stream.start()
 # ==============================
 # 周波数ビン
 # ==============================
-
 def create_custom_log_bins(sr, n_bars, linear_cutoff=1200, linear_ratio=0.4, min_freq=20):
     linear_bins = int(n_bars * linear_ratio)
     log_bins_count = n_bars - linear_bins
@@ -208,14 +203,11 @@ log_bins = create_custom_log_bins(SR, N_BARS)
 # ==============================
 # スペクトル
 # ==============================
-
 def get_freq_spectrum(audio, log_bins):
     global prev_bar_heights
-
     windowed = audio * np.hanning(len(audio))
     fft = np.abs(np.fft.rfft(windowed))
     freqs = np.fft.rfftfreq(len(audio), 1 / SR)
-
     bar_heights = np.zeros(N_BARS)
 
     # ==== 音量処理パラメータ ====
@@ -230,15 +222,14 @@ def get_freq_spectrum(audio, log_bins):
     EXP_LOW = 1.6
     EXP_HIGH = 3.2
 
-    # ★ 高周波リフト（今回の追加）
+    # 高周波リフト
     GAIN_LOW = 1.0
-    GAIN_HIGH = 2.2   # ← 1.8〜3.0で調整可
+    GAIN_HIGH = 2.2
 
     for i in range(N_BARS):
         mask = (freqs >= log_bins[i]) & (freqs < log_bins[i + 1])
         power = np.mean(fft[mask]) if np.any(mask) else 1e-9
         db = 20 * np.log10(power + 1e-9)
-
         effective_db = db - NOISE_FLOOR_DB
 
         if effective_db <= GATE_MARGIN_DB:
@@ -246,29 +237,16 @@ def get_freq_spectrum(audio, log_bins):
         else:
             norm = effective_db / abs(NOISE_FLOOR_DB)
             norm = np.clip(norm, 0, 1)
-
-            # 対数圧縮
             base = np.log1p(norm * 8) / np.log1p(8)
-
-            # 周波数位置
             t = i / (N_BARS - 1)
-
-            # 指数カーブ
             exp = EXP_LOW * (1 - t) + EXP_HIGH * t
             shaped = base ** exp
-
-            # ★ 高周波ほど線形ゲインを追加
             gain = GAIN_LOW * (1 - t) + GAIN_HIGH * t
             raw = shaped * gain
 
-        # スムージング
         t = i / (N_BARS - 1)
         smooth = SMOOTH_LOW * (1 - t) + SMOOTH_HIGH * t
-
-        bar_heights[i] = (
-            prev_bar_heights[i] * (1 - smooth) +
-            raw * smooth
-        )
+        bar_heights[i] = prev_bar_heights[i] * (1 - smooth) + raw * smooth
 
     prev_bar_heights[:] = bar_heights
     return bar_heights
@@ -276,7 +254,6 @@ def get_freq_spectrum(audio, log_bins):
 # ==============================
 # メインループ
 # ==============================
-
 running = True
 while running:
     screen.fill((0, 0, 0))
@@ -285,12 +262,9 @@ while running:
         if event.type == pygame.QUIT:
             running = False
 
-        # ★ アクティブ状態変化を検知
+        # アクティブ状態変化を検知
         if event.type == pygame.ACTIVEEVENT:
-            # state == 2 : ウィンドウフォーカスの変化
-            # gain == 0  : 非アクティブになった
             if event.state == 2 and event.gain == 0:
-                # アプリ切り替え直後に最前面を再指定
                 windll.user32.SetWindowPos(
                     hwnd,
                     HWND_TOPMOST,
@@ -299,10 +273,8 @@ while running:
                 )
 
     bar_heights = get_freq_spectrum(buffer, log_bins)
-
     current_peak = np.max(bar_heights)
     visual_peak = max(current_peak, visual_peak * VISUAL_PEAK_DECAY)
-
     display_heights = np.clip(bar_heights / max(visual_peak, 0.1), 0, 1)
 
     for i, mag in enumerate(display_heights):
@@ -315,7 +287,6 @@ while running:
 
         COLOR_GAMMA = 3.0
         color_mag = mag ** COLOR_GAMMA
-
         color = start * (1 - color_mag) + end * color_mag
         color = tuple(color.astype(int))
 
@@ -327,7 +298,6 @@ while running:
 # ==============================
 # 終了
 # ==============================
-
 stream.stop()
 stream.close()
 pygame.quit()
