@@ -15,64 +15,26 @@ import time
 from ctypes import Structure, windll, byref, c_long
 
 # ==============================
-# デバイス自動選択
+# Voicemeeter B1 を取得
 # ==============================
 
-def find_input_device():
-    devices = sd.query_devices()
-    priority_keywords = [
-        "stereo mix",
-        "ステレオ ミキサー",
-        "vb-audio",
-        "vb-cable",
-        "virtual cable"
-    ]
+OUTPUT_DEVICE_INDEX = None
 
-    for key in priority_keywords:
-        for d in devices:
-            if d["max_input_channels"] > 0 and key.lower() in d["name"].lower():
-                print(f"[Input] Selected: {d['name']}")
-                return d
+for i, dev in enumerate(sd.query_devices()):
+    name = dev["name"]
+    if "Voicemeeter Out B1" in name and dev["max_input_channels"] > 0:
+        OUTPUT_DEVICE_INDEX = i
+        break
 
-    # fallback
-    for d in devices:
-        if d["max_input_channels"] > 0:
-            print(f"[Input] Fallback: {d['name']}")
-            return d
+if OUTPUT_DEVICE_INDEX is None:
+    raise RuntimeError("Voicemeeter Out B1 not found")
 
-    raise RuntimeError("No input device found")
+dev = sd.query_devices(OUTPUT_DEVICE_INDEX)
+SR = int(dev["default_samplerate"])
+CHANNELS = 2   # ★ 固定で2にする（8chだとエラー原因になる）
 
-
-def find_output_device():
-    devices = sd.query_devices()
-    wired_keywords = ["speaker", "headphone", "line"]
-    bt_keywords = ["bluetooth", "bt"]
-
-    for key in wired_keywords:
-        for d in devices:
-            if d["max_output_channels"] > 0 and key.lower() in d["name"].lower():
-                print(f"[Output] Selected (wired): {d['name']}")
-                return d
-
-    for key in bt_keywords:
-        for d in devices:
-            if d["max_output_channels"] > 0 and key.lower() in d["name"].lower():
-                print(f"[Output] Selected (BT): {d['name']}")
-                return d
-
-    for d in devices:
-        if d["max_output_channels"] > 0:
-            print(f"[Output] Fallback: {d['name']}")
-            return d
-
-    raise RuntimeError("No output device found")
-
-
-input_device = find_input_device()
-output_device = find_output_device()
-
-INPUT_DEVICE_INDEX = input_device["index"]
-SR = int(input_device["default_samplerate"])
+print(f"[Audio Capture] {dev['name']}")
+print("Using channels:", CHANNELS)
 
 # ==============================
 # 透過ウィンドウ設定
@@ -169,7 +131,7 @@ windll.user32.SetWindowLongW(
 # ビジュアライザー設定
 # ==============================
 
-BLOCK_SIZE = 2048
+BLOCK_SIZE = 4096
 N_BARS = 128
 BAR_HEIGHT = 250
 BAR_WIDTH = SCREEN_WIDTH // N_BARS
@@ -189,16 +151,15 @@ VISUAL_PEAK_DECAY = 0.985
 def audio_callback(indata, frames, time_info, status):
     global buffer
     if indata is not None and len(indata) > 0:
-        buffer = indata[:, 0].copy()
-
+        buffer = np.mean(indata, axis=1).copy()
 
 stream = sd.InputStream(
+    device=OUTPUT_DEVICE_INDEX,
     samplerate=SR,
+    channels=CHANNELS,
+    callback=audio_callback,
     blocksize=BLOCK_SIZE,
-    device=INPUT_DEVICE_INDEX,
-    channels=1,
-    dtype="float32",
-    callback=audio_callback
+    dtype='float32'
 )
 
 stream.start()
@@ -207,7 +168,7 @@ stream.start()
 # 周波数ビン
 # ==============================
 
-def create_custom_log_bins(sr, n_bars, linear_cutoff=1200, linear_ratio=0.4, min_freq=20):
+def create_custom_log_bins(sr, n_bars, linear_cutoff=800, linear_ratio=0.5, min_freq=20):
     linear_bins = int(n_bars * linear_ratio)
     log_bins = n_bars - linear_bins
     linear_edges = np.linspace(min_freq, linear_cutoff, linear_bins + 1)
@@ -236,7 +197,7 @@ def get_freq_spectrum(audio, log_bins):
     NOISE_FLOOR_DB = -65
     GATE_MARGIN_DB = 8
 
-    SMOOTH_LOW = 0.30
+    SMOOTH_LOW = 0.18
     SMOOTH_HIGH = 0.03
 
     EXP_LOW = 1.6
@@ -245,9 +206,16 @@ def get_freq_spectrum(audio, log_bins):
     GAIN_LOW = 1.0
     GAIN_HIGH = 2.2
 
+    LOW_BOOST_MAX = 1.5
+    LOW_BOOST_END = 0.35
+
     for i in range(N_BARS):
+
+        # ★ 先に定義しておく（重要）
+        t = i / (N_BARS - 1)
+
         mask = (freqs >= log_bins[i]) & (freqs < log_bins[i + 1])
-        power = np.mean(fft[mask]) if np.any(mask) else 1e-9
+        power = np.sqrt(np.mean(fft[mask]**2)) if np.any(mask) else 1e-9
 
         db = 20 * np.log10(power + 1e-9)
         effective_db = db - NOISE_FLOOR_DB
@@ -257,15 +225,29 @@ def get_freq_spectrum(audio, log_bins):
         else:
             norm = np.clip(effective_db / abs(NOISE_FLOOR_DB), 0, 1)
             base = np.log1p(norm * 8) / np.log1p(8)
-            t = i / (N_BARS - 1)
+
             exp = EXP_LOW * (1 - t) + EXP_HIGH * t
             shaped = base ** exp
+
             gain = GAIN_LOW * (1 - t) + GAIN_HIGH * t
             raw = shaped * gain
 
-        t = i / (N_BARS - 1)
+            # 低域線形ブースト
+            if t < LOW_BOOST_END:
+                boost_ratio = 1 - (t / LOW_BOOST_END)
+                low_boost = 1 + boost_ratio * (LOW_BOOST_MAX - 1)
+                raw *= low_boost
+
         smooth = SMOOTH_LOW * (1 - t) + SMOOTH_HIGH * t
         bar_heights[i] = prev_bar_heights[i] * (1 - smooth) + raw * smooth
+
+    # 横スムージング（低域）
+    for i in range(1, 12):
+        bar_heights[i] = (
+            bar_heights[i-1] * 0.25 +
+            bar_heights[i]   * 0.5 +
+            bar_heights[i+1] * 0.25
+        )
 
     prev_bar_heights[:] = bar_heights
     return bar_heights
